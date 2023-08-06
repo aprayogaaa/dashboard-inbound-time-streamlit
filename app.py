@@ -193,7 +193,7 @@ if uploaded_file is not None:
             .encode(
                 x=alt.X('Group Gudang', axis=alt.Axis(title='Warehouse', labelAngle=0)),
                 y=alt.Y('ID:Q', axis=alt.Axis(title='Number of Warehouses')),
-                tooltip=['Group Gudang', 'ID']
+                tooltip=['Group Gudang']
             )
             .properties(title='Number of Warehouses Distribution')
         )
