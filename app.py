@@ -91,25 +91,35 @@ def add_note (Groping_Time):
     elif Groping_Time == 'Sore':
         return 'Sore (15:00 - 18:00)'
     elif Groping_Time == 'Malam':
-        return 'Malam (15:00 - 18:00)'
+        return 'Malam (18:00 - 20:00)'
     else:
         return ''
 
+def convert_col_to_upper(df, columns):
+    for col in columns:
+        df[col] = df[col].str.upper()
+    return df
+
+def data_preparation(df):
+    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+    col_to_convert=['Merchant Type', 'Supplier Name', 'Minimum Order Quantity (MOQ)', 'TGR N - Neglasari', 'TGR E - Batu Ceper', 'BOO N - Bogor', 'CGK SE - Kramat Jati', 'BKI NW - Medan Satria',	'BKI E - Cikarang',	'SMG SE - Semarang',	'SMG W - Semarang Barat',	'SOC E - Karanganyar',	'JOG NE - Sleman',	'BDG E - Bandung Kiaracondong',	'UPG N - Makassar',	'MES E - Deli Serdang',	'MES S - Medan',	'SUB S - Sidoardjo']
+    df = convert_col_to_upper(df, col_to_convert)
+    df['Supplier Code'] = df['Supplier Code'].astype(str)
+    df['MOQ in carton/ pcs / value;  Jika NO isikan dengan 1'] = df['MOQ in carton/ pcs / value;  Jika NO isikan dengan 1'].astype(str)
+    df['ID'] = df.index.map(create_id)
+    df['Grouping Day'] = df['Hari'].apply(grouping_day)
+    df['Grouping Time'] = df['Waktu'].apply(grouping_time)
+    df = df.assign(Split_Time=df['Grouping Time'].str.split(', ')).explode('Split_Time')
+    df['Detail Time'] = df['Split_Time'].apply(add_note)
+    return df
+
 # Function to update data from the uploaded file
 def update_data(uploaded_file):
-    global session_state  # Add this line to define session_state as a global variable
+    global session_state  # define session_state as a global variable
     
     if uploaded_file is not None:
         df = pd.read_excel(uploaded_file)
-        
-        # Data preparation
-        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-        df['Supplier Name'] = df['Supplier Name'].str.upper()
-        df['ID'] = df.index.map(create_id)
-        df['Grouping Day'] = df['Hari'].apply(grouping_day)
-        df['Grouping Time'] = df['Waktu'].apply(grouping_time)
-        df = df.assign(Split_Time=df['Grouping Time'].str.split(', ')).explode('Split_Time')
-        df['Detail Time'] = df['Split_Time'].apply(add_note)
+        df = data_preparation(df)
         
         session_state.df = df   
         session_state.last_search_term = ""  # Reset last_search_term
@@ -177,7 +187,7 @@ if uploaded_file is not None:
                                         'Minimum Order Quantity (MOQ)', 'Carton / Pcs / Value', 'MOQ in carton/ pcs / value;  Jika NO isikan dengan 1', 'TGR N - Neglasari', 'TGR E - Batu Ceper', 'BOO N - Bogor', 'CGK SE - Kramat Jati', 'BKI NW - Medan Satria', 'BKI E - Cikarang', 'SMG SE - Semarang', 'SMG W - Semarang Barat', 'SOC E - Karanganyar', 'JOG NE - Sleman', 'BDG E - Bandung Kiaracondong', 'UPG N - Makassar',
                                         'MES E - Deli Serdang', 'MES S - Medan', 'SUB S - Sidoardjo', 'Hari', 'Waktu']])
 
-        # Pembersihan data dari nilai kosong atau whitespace menjadi NaN
+        # Cleaning data from empty or whitespace values to NaN
         filtered_data_cleaned = filtered_data.replace(r'^\s*$', np.nan, regex=True)
         
         # Group data by 'Warehouse Name' and calculate count distinct 'ID'
@@ -197,8 +207,28 @@ if uploaded_file is not None:
             )
             .properties(title='Number of Warehouses Distribution')
         )
-        st.altair_chart(warehouse_distribution, use_container_width=True)
         
+        # Add text labels on top of the bars
+        text = (
+            alt.Chart(warehouse_counts)
+            .mark_text(dy=-10, color='white')
+            .encode(
+                x=alt.X('Group Gudang:N'),
+                y=alt.Y('ID:Q'),
+                text=alt.Text('ID:Q'),
+                tooltip=[
+                    alt.Tooltip('ID:Q', title='Number of Warehouses'),
+                    alt.Tooltip('Group Gudang:N', title='Warehouse')
+                ]
+            )
+        )
+        st.altair_chart(warehouse_distribution + text, use_container_width=True)
+        
+        color_scale = alt.Scale(
+            domain=['Pagi (08:00 - 12:00)', 'Siang (12:00 - 15:00)', 'Sore (15:00 - 18:00)', 'Malam (18:00 - 20:00)'],  # Define the unique values in Detail Time
+            range=['#1f77b4', '#ff7f0e', '#2ca02c', '#ffffff']  # Define the colors for each value
+        )
+
         # Number of Inbound time with bar chart
         inbound_time_distribution = (
             alt.Chart(filtered_data_cleaned.dropna(subset=['Grouping Day']))
@@ -206,13 +236,12 @@ if uploaded_file is not None:
             .encode(
                 x=alt.X('Grouping Day', axis=alt.Axis(title='Grouping Day', labelAngle=0)),
                 y=alt.Y('count()', axis=alt.Axis(title='Number of Inbound Time')),
-                color=alt.Color('Detail Time', legend=alt.Legend(title='Detail Time')),
+                color=alt.Color('Detail Time', scale=color_scale, legend=alt.Legend(title='Detail Time')),
                 tooltip=['Grouping Day', 'count()']
             )
             .properties(title='Number of Inbound Time Distribution')
         )
         st.altair_chart(inbound_time_distribution, use_container_width=True)
-
 else:
     st.info('Awaiting for Excel file to be uploaded.')
 
